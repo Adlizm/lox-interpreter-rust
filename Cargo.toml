@@ -2,8 +2,7 @@
 name = "lox-interpreter-rust"
 version = "0.1.0"
 authors = ["Adlizm <adlizm.pq@gmail.com>"]
-edition = "2021"
-rust-version = "1.80"
+edition = "2024"
 
 [dependencies]
 clap = { version = "4.5.40", features = ["derive"] }
