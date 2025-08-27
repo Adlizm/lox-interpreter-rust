@@ -90,52 +90,54 @@ pub enum Token<'a> {
 
 impl<'a> std::fmt::Display for Token<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Token::LeftParen => write!(f, "LEFT_PAREN ( null"),
-            Token::RightParen => write!(f, "RIGHT_PAREN ) null"),
-            Token::LeftBrace => write!(f, "LEFT_BRACE {{ null"),
-            Token::RightBrace => write!(f, "RIGHT_BRACE }} null"),
-            Token::Semicolon => write!(f, "SEMICOLON ; null"),
-            Token::Comma => write!(f, "COMMA , null"),
-            Token::Plus => write!(f, "PLUS + null"),
-            Token::Minus => write!(f, "MINUS - null"),
-            Token::Star => write!(f, "STAR * null"),
-            Token::Slash => write!(f, "SLASH / null"),
-            Token::Dot => write!(f, "DOT . null"),
-            Token::Bang => write!(f, "BANG ! null"),
-            Token::BangEqual => write!(f, "BANG_EQUAL != null"),
-            Token::Equal => write!(f, "EQUAL = null"),
-            Token::EqualEqual => write!(f, "EQUAL_EQUAL == null"),
-            Token::Less => write!(f, "LESS < null"),
-            Token::LessEqual => write!(f, "LESS_EQUAL <= null"),
-            Token::Greater => write!(f, "GREATER > null"),
-            Token::GreaterEqual => write!(f, "GREATER_EQUAL >= null"),
-            Token::And => todo!(),
-            Token::Or => todo!(),
-            Token::Nil => todo!(),
-            Token::True => todo!(),
-            Token::False => todo!(),
-            Token::Ident(_) => todo!(),
-            Token::String(_) => todo!(),
+        let lit = match self {
+            Token::LeftParen => "(",
+            Token::RightParen => ")",
+            Token::LeftBrace => "{",
+            Token::RightBrace => "}",
+            Token::Semicolon => ";",
+            Token::Comma => ",",
+            Token::Plus => "+",
+            Token::Minus => "-",
+            Token::Star => "*",
+            Token::Slash => "/",
+            Token::Dot => ".",
+            Token::Bang => "!",
+            Token::BangEqual => "!=",
+            Token::Equal => "=",
+            Token::EqualEqual => "==",
+            Token::Less => "<",
+            Token::LessEqual => "<=",
+            Token::Greater => ">",
+            Token::GreaterEqual => ">=",
+            Token::And => "and",
+            Token::Or => "or",
+            Token::Nil => "nil",
+            Token::True => "true",
+            Token::False => "false",
+            Token::Ident(ident) => &ident,
+            Token::String(string) => return write!(f, "\"{string}\""),
             Token::Number(n) => {
                 if n.trunc() == *n {
-                    write!(f, "NUMBER {n} {n}.0")
+                    return write!(f, "NUMBER {n} {n}.0");
                 } else {
-                    write!(f, "NUMBER {n} {n}")
+                    return write!(f, "NUMBER {n} {n}");
                 }
             }
-            Token::If => todo!(),
-            Token::Else => todo!(),
-            Token::Var => todo!(),
-            Token::Fun => todo!(),
-            Token::For => todo!(),
-            Token::While => todo!(),
-            Token::Print => todo!(),
-            Token::Return => todo!(),
-            Token::Class => todo!(),
-            Token::Super => todo!(),
-            Token::This => todo!(),
-        }
+            Token::If => "if",
+            Token::Else => "else",
+            Token::Var => "var",
+            Token::Fun => "fun",
+            Token::For => "for",
+            Token::While => "while",
+            Token::Print => "print",
+            Token::Return => "return",
+            Token::Class => "class",
+            Token::Super => "super",
+            Token::This => "this",
+        };
+
+        write!(f, "{lit}")
     }
 }
 
@@ -274,7 +276,7 @@ impl<'a> Iterator for Lexer<'a> {
                             let literal = &rest_with_c[0..len];
                             literal
                         }
-                        None => chars_iter.as_str(),
+                        None => rest_with_c,
                     };
 
                     self.rest = &rest_with_c[literal.len()..];
@@ -315,5 +317,126 @@ impl<'a> Iterator for Lexer<'a> {
                 c => return Some(Err(self.with_error(LexerError::UnxpectedChar(c)))),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    fn collect_token_vec<'a>(content: &'a str) -> Vec<Token<'a>> {
+        Lexer::new(content)
+            .into_iter()
+            .map(|token| token.unwrap())
+            .collect()
+    }
+
+    #[test]
+    fn tokenize_numbers() {
+        let tokens = collect_token_vec("123.4234 0234 24 0.13");
+        assert_eq!(tokens.len(), 4);
+        assert_eq!(tokens[0], Token::Number(123.4234));
+        assert_eq!(tokens[1], Token::Number(234.0));
+        assert_eq!(tokens[2], Token::Number(24.0));
+        assert_eq!(tokens[3], Token::Number(0.13));
+    }
+
+    #[test]
+    fn tokenize_strings() {
+        let tokens = collect_token_vec("\"\"\"hello world\"");
+        assert_eq!(tokens.len(), 2);
+        assert_eq!(tokens[0], Token::String(""));
+        assert_eq!(tokens[1], Token::String("hello world"));
+    }
+
+    #[test]
+    fn tokenize_puctuators() {
+        let tokens = collect_token_vec("(){};,+-*!===<=>=!<>/.=");
+
+        assert_eq!(tokens.len(), 19);
+        assert_eq!(tokens[0], Token::LeftParen);
+        assert_eq!(tokens[1], Token::RightParen);
+        assert_eq!(tokens[2], Token::LeftBrace);
+        assert_eq!(tokens[3], Token::RightBrace);
+        assert_eq!(tokens[4], Token::Semicolon);
+        assert_eq!(tokens[5], Token::Comma);
+        assert_eq!(tokens[6], Token::Plus);
+        assert_eq!(tokens[7], Token::Minus);
+        assert_eq!(tokens[8], Token::Star);
+        assert_eq!(tokens[9], Token::BangEqual);
+        assert_eq!(tokens[10], Token::EqualEqual);
+        assert_eq!(tokens[11], Token::LessEqual);
+        assert_eq!(tokens[12], Token::GreaterEqual);
+        assert_eq!(tokens[13], Token::Bang);
+        assert_eq!(tokens[14], Token::Less);
+        assert_eq!(tokens[15], Token::Greater);
+        assert_eq!(tokens[16], Token::Slash);
+        assert_eq!(tokens[17], Token::Dot);
+        assert_eq!(tokens[18], Token::Equal);
+    }
+
+    #[test]
+    fn tokenize_reserved() {
+        let tokens = collect_token_vec(
+            "and class else false for fun if nil or return super this true var while",
+        );
+
+        assert_eq!(tokens.len(), 15);
+        assert_eq!(tokens[0], Token::And);
+        assert_eq!(tokens[1], Token::Class);
+        assert_eq!(tokens[2], Token::Else);
+        assert_eq!(tokens[3], Token::False);
+        assert_eq!(tokens[4], Token::For);
+        assert_eq!(tokens[5], Token::Fun);
+        assert_eq!(tokens[6], Token::If);
+        assert_eq!(tokens[7], Token::Nil);
+        assert_eq!(tokens[8], Token::Or);
+        assert_eq!(tokens[9], Token::Return);
+        assert_eq!(tokens[10], Token::Super);
+        assert_eq!(tokens[11], Token::This);
+        assert_eq!(tokens[12], Token::True);
+        assert_eq!(tokens[13], Token::Var);
+        assert_eq!(tokens[14], Token::While);
+    }
+
+    #[test]
+    fn tokenize_idents() {
+        let tokens = collect_token_vec(
+            "andy formless fo _ _123 _abc ab123
+            abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890_
+            ",
+        );
+
+        assert_eq!(tokens.len(), 8);
+        assert_eq!(tokens[0], Token::Ident("andy"));
+        assert_eq!(tokens[1], Token::Ident("formless"));
+        assert_eq!(tokens[2], Token::Ident("fo"));
+        assert_eq!(tokens[3], Token::Ident("_"));
+        assert_eq!(tokens[4], Token::Ident("_123"));
+        assert_eq!(tokens[5], Token::Ident("_abc"));
+        assert_eq!(tokens[6], Token::Ident("ab123"));
+        assert_eq!(
+            tokens[7],
+            Token::Ident("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890_")
+        );
+    }
+
+    #[test]
+    fn test_whitespaces_and_comments() {
+        let tokens = collect_token_vec(
+            "space    tabs				newlines
+
+            // some comment 
+            // other comment
+
+            end
+            // final comment",
+        );
+
+        assert_eq!(tokens.len(), 4);
+        assert_eq!(tokens[0], Token::Ident("space"));
+        assert_eq!(tokens[1], Token::Ident("tabs"));
+        assert_eq!(tokens[2], Token::Ident("newlines"));
+        assert_eq!(tokens[3], Token::Ident("end"));
     }
 }
