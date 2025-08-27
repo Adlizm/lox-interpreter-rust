@@ -28,7 +28,7 @@ impl OpInfix {
             TokenKind::And => Some(Self::And),
             TokenKind::Less => Some(Self::Less),
             TokenKind::LessEqual => Some(Self::LessEqual),
-            TokenKind::Equal => Some(Self::Equal),
+            TokenKind::EqualEqual => Some(Self::Equal),
             TokenKind::BangEqual => Some(Self::NotEqual),
             TokenKind::Greater => Some(Self::Greater),
             TokenKind::GreaterEqual => Some(Self::GreaterEqual),
@@ -39,14 +39,14 @@ impl OpInfix {
 
     fn binding_power(self) -> (usize, usize) {
         match self {
+            Self::And => (1, 2),
+            Self::Or => (3, 4),
             Self::Equal
             | Self::NotEqual
             | Self::Less
             | Self::Greater
             | Self::LessEqual
-            | Self::GreaterEqual => (1, 2),
-            Self::Or => (3, 4),
-            Self::And => (5, 6),
+            | Self::GreaterEqual => (5, 6),
             Self::Add | Self::Sub => (7, 8),
             Self::Mul | Self::Div => (9, 10),
             Self::FieldAccess => (15, 16),
@@ -157,8 +157,9 @@ impl<'a> Parse<'a> for Expression<'a> {
             let Some(token) = parser.peek()? else {
                 break;
             };
+            let kind = token.kind();
 
-            if let Some(op) = OpSufix::from_kind(token.kind()) {
+            if let Some(op) = OpSufix::from_kind(kind) {
                 let (left_bp, _) = op.binding_power();
                 if left_bp < min_bp {
                     break;
@@ -185,8 +186,7 @@ impl<'a> Parse<'a> for Expression<'a> {
                                     return Err(parser.with_error(err));
                                 }
                             }
-
-                            let arg = Expression::parse(parser)?;
+                            let arg = Expression::parse_within(parser, 0)?;
                             arguments.push(arg);
                         }
                         parser.expect(TokenKind::RightParen)?;
@@ -194,10 +194,11 @@ impl<'a> Parse<'a> for Expression<'a> {
                         Expression::FunCall(Box::new(lhs), arguments)
                     }
                 };
+
                 continue;
             }
 
-            if let Some(op) = OpInfix::from_kind(token.kind()) {
+            if let Some(op) = OpInfix::from_kind(kind) {
                 let (left_bp, right_bp) = op.binding_power();
                 if left_bp < min_bp {
                     break;
@@ -213,9 +214,120 @@ impl<'a> Parse<'a> for Expression<'a> {
                     let rhs = Self::parse_within(parser, right_bp)?;
                     lhs = Expression::Operation(Box::new(lhs), op, Box::new(rhs));
                 }
+
+                continue;
             }
+
+            break;
         }
 
         Ok(lhs)
+    }
+}
+
+impl<'a> std::fmt::Display for Expression<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Expression::Operation(left, op, right) => match op {
+                OpInfix::Add => write!(f, "(+ {left} {right})"),
+                OpInfix::Mul => write!(f, "(* {left} {right})"),
+                OpInfix::Div => write!(f, "(/ {left} {right})"),
+                OpInfix::Sub => write!(f, "(- {left} {right})"),
+                OpInfix::Or => write!(f, "(or {left} {right})"),
+                OpInfix::And => write!(f, "(and {left} {right})"),
+                OpInfix::Less => write!(f, "(< {left} {right})"),
+                OpInfix::LessEqual => write!(f, "(<= {left} {right})"),
+                OpInfix::Equal => write!(f, "(== {left} {right})"),
+                OpInfix::NotEqual => write!(f, "(!= {left} {right})"),
+                OpInfix::Greater => write!(f, "(> {left} {right})"),
+                OpInfix::GreaterEqual => write!(f, "(>= {left} {right})"),
+                OpInfix::FieldAccess => write!(f, "(. {left} {right})"),
+            },
+            Expression::Neg(exp) => write!(f, "(- {exp})"),
+            Expression::Not(exp) => write!(f, "(! {exp})"),
+            Expression::FieldAccess(exp, field) => write!(f, "(. {exp} {field})"),
+            Expression::FunCall(exp, args) => {
+                write!(f, "(call {exp}")?;
+                for arg in args {
+                    write!(f, " {arg}")?;
+                }
+                write!(f, ")")
+            }
+            Expression::Super => write!(f, "super"),
+            Expression::This => write!(f, "this"),
+            Expression::Ident(ident) => write!(f, "{ident}"),
+            Expression::Nil => write!(f, "nil"),
+            Expression::Bool(b) => write!(f, "{b}"),
+            Expression::Number(n) => {
+                if *n == n.trunc() {
+                    write!(f, "{n}.0")
+                } else {
+                    write!(f, "{n}")
+                }
+            }
+            Expression::String(s) => write!(f, "\"{s}\""),
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::parser::{Expression, Parse};
+
+    #[test]
+    fn aritmetics() {
+        let s = Expression::parse_str("1").unwrap();
+        assert_eq!(s.to_string(), "1.0");
+
+        let s = Expression::parse_str("1 + 2 * 3").unwrap();
+        assert_eq!(s.to_string(), "(+ 1.0 (* 2.0 3.0))");
+
+        let s = Expression::parse_str("a + b * c * d + e").unwrap();
+        assert_eq!(s.to_string(), "(+ (+ a (* (* b c) d)) e)");
+    }
+
+    #[test]
+    fn conditions() {
+        let s = Expression::parse_str("true").unwrap();
+        assert_eq!(s.to_string(), "true");
+
+        let s = Expression::parse_str("a >= 0 or a * 3 <= 10 and b == 0").unwrap();
+        assert_eq!(
+            s.to_string(),
+            "(and (or (>= a 0.0) (<= (* a 3.0) 10.0)) (== b 0.0))"
+        );
+
+        let s = Expression::parse_str("!true or !a == b and c * -a + 2 != d").unwrap();
+        assert_eq!(
+            s.to_string(),
+            "(and (or (! true) (== (! a) b)) (!= (+ (* c (- a)) 2.0) d))"
+        );
+    }
+
+    #[test]
+    fn functions_call() {
+        let s = Expression::parse_str("a()").unwrap();
+        assert_eq!(s.to_string(), "(call a)");
+
+        let s = Expression::parse_str("a(1 + 2, true, a >= 3 * c)").unwrap();
+        assert_eq!(s.to_string(), "(call a (+ 1.0 2.0) true (>= a (* 3.0 c)))");
+
+        let s = Expression::parse_str("f(a + true)(g(a))(1/a)").unwrap();
+        assert_eq!(
+            s.to_string(),
+            "(call (call (call f (+ a true)) (call g a)) (/ 1.0 a))"
+        );
+    }
+
+    #[test]
+    fn field_access() {
+        let s = Expression::parse_str("a.b").unwrap();
+        assert_eq!(s.to_string(), "(. a b)");
+
+        let s = Expression::parse_str("super.a * this.d().c(x + y)").unwrap();
+        assert_eq!(
+            s.to_string(),
+            "(* (. super a) (call (. (call (. this d)) c) (+ x y)))"
+        );
     }
 }

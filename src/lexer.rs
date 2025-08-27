@@ -293,7 +293,7 @@ impl<'a> Iterator for Lexer<'a> {
                                     self.rest = chars_iter.as_str();
 
                                     let len = rest_with_c.len() - self.rest.len();
-                                    break &rest_with_c[1..len - 1];
+                                    break &rest_with_c[0..len];
                                 }
                                 _ => self.col += 1,
                             }
@@ -304,7 +304,7 @@ impl<'a> Iterator for Lexer<'a> {
                     return Some(Ok(Token {
                         kind: TokenKind::String,
                         lit: Some(literal),
-                        value: Some(TokenValue::String(&literal[1..literal.len()])),
+                        value: Some(TokenValue::String(&literal[1..literal.len() - 1])),
                     }));
                 }
 
@@ -436,7 +436,7 @@ mod test {
 
     #[test]
     fn tokenize_strings() {
-        let tokens = collect_token_vec("\"\"\"hello world\"");
+        let tokens = collect_token_vec(r#""""hello world""#);
         assert_eq!(tokens.len(), 2);
         assert_eq!(tokens[0].string(), Some(""));
         assert_eq!(tokens[1].string(), Some("hello world"));
