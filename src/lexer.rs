@@ -46,8 +46,64 @@ impl<'a> Lexer<'a> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum Token<'a> {
+#[derive(Debug, Clone)]
+pub struct Token<'a> {
+    kind: TokenKind,
+    lit: Option<&'a str>,
+    value: Option<TokenValue<'a>>,
+}
+
+impl<'a> Token<'a> {
+    pub fn kind(&self) -> TokenKind {
+        self.kind
+    }
+
+    pub fn ident(&self) -> Option<&'a str> {
+        match self.kind {
+            TokenKind::Ident => {
+                return Some(self.lit.expect("Ident must have literal"));
+            }
+            _ => None,
+        }
+    }
+
+    pub fn bool(&self) -> Option<bool> {
+        match self.kind {
+            TokenKind::True => Some(true),
+            TokenKind::False => Some(false),
+            _ => None,
+        }
+    }
+
+    pub fn number(&self) -> Option<f64> {
+        match self.kind {
+            TokenKind::Number => match self.value {
+                Some(TokenValue::Number(n)) => Some(n),
+                _ => unreachable!(),
+            },
+            _ => None,
+        }
+    }
+
+    pub fn string(&self) -> Option<&'a str> {
+        match self.kind {
+            TokenKind::String => match self.value {
+                Some(TokenValue::String(s)) => Some(s),
+                _ => unreachable!(),
+            },
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TokenValue<'a> {
+    Number(f64),
+    String(&'a str),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TokenKind {
     LeftParen,
     RightParen,
     LeftBrace,
@@ -72,9 +128,9 @@ pub enum Token<'a> {
     Nil,
     True,
     False,
-    Number(f64),
-    Ident(&'a str),
-    String(&'a str),
+    Number,
+    Ident,
+    String,
     If,
     Else,
     Var,
@@ -88,56 +144,72 @@ pub enum Token<'a> {
     This,
 }
 
-impl<'a> std::fmt::Display for Token<'a> {
+impl std::fmt::Display for TokenKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let lit = match self {
-            Token::LeftParen => "(",
-            Token::RightParen => ")",
-            Token::LeftBrace => "{",
-            Token::RightBrace => "}",
-            Token::Semicolon => ";",
-            Token::Comma => ",",
-            Token::Plus => "+",
-            Token::Minus => "-",
-            Token::Star => "*",
-            Token::Slash => "/",
-            Token::Dot => ".",
-            Token::Bang => "!",
-            Token::BangEqual => "!=",
-            Token::Equal => "=",
-            Token::EqualEqual => "==",
-            Token::Less => "<",
-            Token::LessEqual => "<=",
-            Token::Greater => ">",
-            Token::GreaterEqual => ">=",
-            Token::And => "and",
-            Token::Or => "or",
-            Token::Nil => "nil",
-            Token::True => "true",
-            Token::False => "false",
-            Token::Ident(ident) => &ident,
-            Token::String(string) => return write!(f, "\"{string}\""),
-            Token::Number(n) => {
-                if n.trunc() == *n {
-                    return write!(f, "NUMBER {n} {n}.0");
-                } else {
-                    return write!(f, "NUMBER {n} {n}");
-                }
-            }
-            Token::If => "if",
-            Token::Else => "else",
-            Token::Var => "var",
-            Token::Fun => "fun",
-            Token::For => "for",
-            Token::While => "while",
-            Token::Print => "print",
-            Token::Return => "return",
-            Token::Class => "class",
-            Token::Super => "super",
-            Token::This => "this",
+            TokenKind::LeftParen => "(",
+            TokenKind::RightParen => ")",
+            TokenKind::LeftBrace => "{",
+            TokenKind::RightBrace => "}",
+            TokenKind::Semicolon => ";",
+            TokenKind::Comma => ",",
+            TokenKind::Plus => "+",
+            TokenKind::Minus => "-",
+            TokenKind::Star => "*",
+            TokenKind::Slash => "/",
+            TokenKind::Dot => ".",
+            TokenKind::Bang => "!",
+            TokenKind::BangEqual => "!=",
+            TokenKind::Equal => "=",
+            TokenKind::EqualEqual => "==",
+            TokenKind::Less => "<",
+            TokenKind::LessEqual => "<=",
+            TokenKind::Greater => ">",
+            TokenKind::GreaterEqual => ">=",
+            TokenKind::And => "and",
+            TokenKind::Or => "or",
+            TokenKind::Nil => "nil",
+            TokenKind::True => "true",
+            TokenKind::False => "false",
+            TokenKind::If => "if",
+            TokenKind::Else => "else",
+            TokenKind::Var => "var",
+            TokenKind::Fun => "fun",
+            TokenKind::For => "for",
+            TokenKind::While => "while",
+            TokenKind::Print => "print",
+            TokenKind::Return => "return",
+            TokenKind::Class => "class",
+            TokenKind::Super => "super",
+            TokenKind::This => "this",
+            kind => return write!(f, "{kind:?}"),
         };
 
         write!(f, "{lit}")
+    }
+}
+
+impl<'a> std::fmt::Display for Token<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.kind {
+            TokenKind::Ident => {
+                let lit = self.lit.expect("Indent kind contains lit");
+                write!(f, "{lit}")
+            }
+            TokenKind::String => {
+                let string = self.string().expect("String kind contains string value");
+                write!(f, "\"{string}\"")
+            }
+            TokenKind::Number => {
+                let n = self.number().expect("Number kind contains number value");
+                if n.trunc() == n {
+                    write!(f, "NUMBER {n} {n}.0")
+                } else {
+                    write!(f, "NUMBER {n} {n}")
+                }
+            }
+            kind => write!(f, "{kind}"),
+        }
     }
 }
 
@@ -146,6 +218,14 @@ impl<'a> Iterator for Lexer<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let mut chars_iter = self.rest.chars();
+
+        let just_kind = |kind: TokenKind| {
+            Some(Ok(Token {
+                kind,
+                lit: None,
+                value: None,
+            }))
+        };
 
         loop {
             let rest_with_c = self.rest;
@@ -156,16 +236,16 @@ impl<'a> Iterator for Lexer<'a> {
             self.rest = chars_iter.as_str();
 
             match c {
-                '(' => return Some(Ok(Token::LeftParen)),
-                ')' => return Some(Ok(Token::RightParen)),
-                '{' => return Some(Ok(Token::LeftBrace)),
-                '}' => return Some(Ok(Token::RightBrace)),
-                ';' => return Some(Ok(Token::Semicolon)),
-                ',' => return Some(Ok(Token::Comma)),
-                '.' => return Some(Ok(Token::Dot)),
-                '+' => return Some(Ok(Token::Plus)),
-                '-' => return Some(Ok(Token::Minus)),
-                '*' => return Some(Ok(Token::Star)),
+                '(' => return just_kind(TokenKind::LeftParen),
+                ')' => return just_kind(TokenKind::RightParen),
+                '{' => return just_kind(TokenKind::LeftBrace),
+                '}' => return just_kind(TokenKind::RightBrace),
+                ';' => return just_kind(TokenKind::Semicolon),
+                ',' => return just_kind(TokenKind::Comma),
+                '.' => return just_kind(TokenKind::Dot),
+                '+' => return just_kind(TokenKind::Plus),
+                '-' => return just_kind(TokenKind::Minus),
+                '*' => return just_kind(TokenKind::Star),
                 '/' => {
                     if let Some('/') = chars_iter.next() {
                         // comments
@@ -177,30 +257,30 @@ impl<'a> Iterator for Lexer<'a> {
 
                         continue;
                     } else {
-                        return Some(Ok(Token::Slash));
+                        return just_kind(TokenKind::Slash);
                     }
                 }
                 '!' | '=' | '<' | '>' => {
                     let (no, yes) = match c {
-                        '!' => (Token::Bang, Token::BangEqual),
-                        '=' => (Token::Equal, Token::EqualEqual),
-                        '<' => (Token::Less, Token::LessEqual),
-                        '>' => (Token::Greater, Token::GreaterEqual),
+                        '!' => (TokenKind::Bang, TokenKind::BangEqual),
+                        '=' => (TokenKind::Equal, TokenKind::EqualEqual),
+                        '<' => (TokenKind::Less, TokenKind::LessEqual),
+                        '>' => (TokenKind::Greater, TokenKind::GreaterEqual),
                         _ => unreachable!(),
                     };
                     if let Some('=') = chars_iter.next() {
                         self.bytes += 1;
                         self.col += 1;
                         self.rest = &self.rest[1..];
-                        return Some(Ok(yes));
+                        return just_kind(yes);
                     } else {
-                        return Some(Ok(no));
+                        return just_kind(no);
                     }
                 }
 
                 // strings
                 '"' => {
-                    let string = loop {
+                    let literal = loop {
                         if let Some(c) = chars_iter.next() {
                             self.bytes += c.len_utf8();
                             match c {
@@ -221,7 +301,11 @@ impl<'a> Iterator for Lexer<'a> {
                             return Some(Err(self.with_error(LexerError::UnterminatedString)));
                         }
                     };
-                    return Some(Ok(Token::String(string)));
+                    return Some(Ok(Token {
+                        kind: TokenKind::String,
+                        lit: Some(literal),
+                        value: Some(TokenValue::String(&literal[1..literal.len()])),
+                    }));
                 }
 
                 // numbers
@@ -258,12 +342,16 @@ impl<'a> Iterator for Lexer<'a> {
 
                     self.bytes += len;
                     self.rest = &rest_with_c[len..];
-                    let number = &rest_with_c[0..len];
-                    let number = number
+                    let number_lit = &rest_with_c[0..len];
+                    let number = number_lit
                         .parse::<f64>()
                         .expect("this string not contains any nondigit or double '.'");
 
-                    return Some(Ok(Token::Number(number)));
+                    return Some(Ok(Token {
+                        kind: TokenKind::Number,
+                        lit: Some(number_lit),
+                        value: Some(TokenValue::Number(number)),
+                    }));
                 }
 
                 // indentifiers and reserved words
@@ -283,26 +371,31 @@ impl<'a> Iterator for Lexer<'a> {
                     self.bytes += literal.len();
                     self.col += literal.len();
 
-                    let token = match literal {
-                        "nil" => Token::Nil,
-                        "true" => Token::True,
-                        "false" => Token::False,
-                        "and" => Token::And,
-                        "or" => Token::Or,
-                        "if" => Token::If,
-                        "else" => Token::Else,
-                        "var" => Token::Var,
-                        "for" => Token::For,
-                        "while" => Token::While,
-                        "fun" => Token::Fun,
-                        "class" => Token::Class,
-                        "super" => Token::Super,
-                        "this" => Token::This,
-                        "print" => Token::Print,
-                        "return" => Token::Return,
-                        ident => Token::Ident(ident),
+                    match literal {
+                        "false" => return just_kind(TokenKind::False),
+                        "true" => return just_kind(TokenKind::True),
+                        "nil" => return just_kind(TokenKind::Nil),
+                        "and" => return just_kind(TokenKind::And),
+                        "or" => return just_kind(TokenKind::Or),
+                        "if" => return just_kind(TokenKind::If),
+                        "else" => return just_kind(TokenKind::Else),
+                        "var" => return just_kind(TokenKind::Var),
+                        "for" => return just_kind(TokenKind::For),
+                        "while" => return just_kind(TokenKind::While),
+                        "fun" => return just_kind(TokenKind::Fun),
+                        "class" => return just_kind(TokenKind::Class),
+                        "super" => return just_kind(TokenKind::Super),
+                        "this" => return just_kind(TokenKind::This),
+                        "print" => return just_kind(TokenKind::Print),
+                        "return" => return just_kind(TokenKind::Return),
+                        ident => {
+                            return Some(Ok(Token {
+                                kind: TokenKind::Ident,
+                                lit: Some(ident),
+                                value: None,
+                            }));
+                        }
                     };
-                    return Some(Ok(token));
                 }
 
                 // ignoring spaces
@@ -335,18 +428,18 @@ mod test {
     fn tokenize_numbers() {
         let tokens = collect_token_vec("123.4234 0234 24 0.13");
         assert_eq!(tokens.len(), 4);
-        assert_eq!(tokens[0], Token::Number(123.4234));
-        assert_eq!(tokens[1], Token::Number(234.0));
-        assert_eq!(tokens[2], Token::Number(24.0));
-        assert_eq!(tokens[3], Token::Number(0.13));
+        assert_eq!(tokens[0].number(), Some(123.4234));
+        assert_eq!(tokens[1].number(), Some(234.0));
+        assert_eq!(tokens[2].number(), Some(24.0));
+        assert_eq!(tokens[3].number(), Some(0.13));
     }
 
     #[test]
     fn tokenize_strings() {
         let tokens = collect_token_vec("\"\"\"hello world\"");
         assert_eq!(tokens.len(), 2);
-        assert_eq!(tokens[0], Token::String(""));
-        assert_eq!(tokens[1], Token::String("hello world"));
+        assert_eq!(tokens[0].string(), Some(""));
+        assert_eq!(tokens[1].string(), Some("hello world"));
     }
 
     #[test]
@@ -354,25 +447,25 @@ mod test {
         let tokens = collect_token_vec("(){};,+-*!===<=>=!<>/.=");
 
         assert_eq!(tokens.len(), 19);
-        assert_eq!(tokens[0], Token::LeftParen);
-        assert_eq!(tokens[1], Token::RightParen);
-        assert_eq!(tokens[2], Token::LeftBrace);
-        assert_eq!(tokens[3], Token::RightBrace);
-        assert_eq!(tokens[4], Token::Semicolon);
-        assert_eq!(tokens[5], Token::Comma);
-        assert_eq!(tokens[6], Token::Plus);
-        assert_eq!(tokens[7], Token::Minus);
-        assert_eq!(tokens[8], Token::Star);
-        assert_eq!(tokens[9], Token::BangEqual);
-        assert_eq!(tokens[10], Token::EqualEqual);
-        assert_eq!(tokens[11], Token::LessEqual);
-        assert_eq!(tokens[12], Token::GreaterEqual);
-        assert_eq!(tokens[13], Token::Bang);
-        assert_eq!(tokens[14], Token::Less);
-        assert_eq!(tokens[15], Token::Greater);
-        assert_eq!(tokens[16], Token::Slash);
-        assert_eq!(tokens[17], Token::Dot);
-        assert_eq!(tokens[18], Token::Equal);
+        assert_eq!(tokens[0].kind(), TokenKind::LeftParen);
+        assert_eq!(tokens[1].kind(), TokenKind::RightParen);
+        assert_eq!(tokens[2].kind(), TokenKind::LeftBrace);
+        assert_eq!(tokens[3].kind(), TokenKind::RightBrace);
+        assert_eq!(tokens[4].kind(), TokenKind::Semicolon);
+        assert_eq!(tokens[5].kind(), TokenKind::Comma);
+        assert_eq!(tokens[6].kind(), TokenKind::Plus);
+        assert_eq!(tokens[7].kind(), TokenKind::Minus);
+        assert_eq!(tokens[8].kind(), TokenKind::Star);
+        assert_eq!(tokens[9].kind(), TokenKind::BangEqual);
+        assert_eq!(tokens[10].kind(), TokenKind::EqualEqual);
+        assert_eq!(tokens[11].kind(), TokenKind::LessEqual);
+        assert_eq!(tokens[12].kind(), TokenKind::GreaterEqual);
+        assert_eq!(tokens[13].kind(), TokenKind::Bang);
+        assert_eq!(tokens[14].kind(), TokenKind::Less);
+        assert_eq!(tokens[15].kind(), TokenKind::Greater);
+        assert_eq!(tokens[16].kind(), TokenKind::Slash);
+        assert_eq!(tokens[17].kind(), TokenKind::Dot);
+        assert_eq!(tokens[18].kind(), TokenKind::Equal);
     }
 
     #[test]
@@ -382,21 +475,27 @@ mod test {
         );
 
         assert_eq!(tokens.len(), 15);
-        assert_eq!(tokens[0], Token::And);
-        assert_eq!(tokens[1], Token::Class);
-        assert_eq!(tokens[2], Token::Else);
-        assert_eq!(tokens[3], Token::False);
-        assert_eq!(tokens[4], Token::For);
-        assert_eq!(tokens[5], Token::Fun);
-        assert_eq!(tokens[6], Token::If);
-        assert_eq!(tokens[7], Token::Nil);
-        assert_eq!(tokens[8], Token::Or);
-        assert_eq!(tokens[9], Token::Return);
-        assert_eq!(tokens[10], Token::Super);
-        assert_eq!(tokens[11], Token::This);
-        assert_eq!(tokens[12], Token::True);
-        assert_eq!(tokens[13], Token::Var);
-        assert_eq!(tokens[14], Token::While);
+        assert_eq!(tokens[0].kind(), TokenKind::And);
+        assert_eq!(tokens[1].kind(), TokenKind::Class);
+        assert_eq!(tokens[2].kind(), TokenKind::Else);
+
+        assert_eq!(tokens[3].kind(), TokenKind::False);
+        assert_eq!(tokens[3].bool(), Some(false));
+
+        assert_eq!(tokens[4].kind(), TokenKind::For);
+        assert_eq!(tokens[5].kind(), TokenKind::Fun);
+        assert_eq!(tokens[6].kind(), TokenKind::If);
+        assert_eq!(tokens[7].kind(), TokenKind::Nil);
+        assert_eq!(tokens[8].kind(), TokenKind::Or);
+        assert_eq!(tokens[9].kind(), TokenKind::Return);
+        assert_eq!(tokens[10].kind(), TokenKind::Super);
+        assert_eq!(tokens[11].kind(), TokenKind::This);
+
+        assert_eq!(tokens[12].kind(), TokenKind::True);
+        assert_eq!(tokens[12].bool(), Some(true));
+
+        assert_eq!(tokens[13].kind(), TokenKind::Var);
+        assert_eq!(tokens[14].kind(), TokenKind::While);
     }
 
     #[test]
@@ -408,16 +507,16 @@ mod test {
         );
 
         assert_eq!(tokens.len(), 8);
-        assert_eq!(tokens[0], Token::Ident("andy"));
-        assert_eq!(tokens[1], Token::Ident("formless"));
-        assert_eq!(tokens[2], Token::Ident("fo"));
-        assert_eq!(tokens[3], Token::Ident("_"));
-        assert_eq!(tokens[4], Token::Ident("_123"));
-        assert_eq!(tokens[5], Token::Ident("_abc"));
-        assert_eq!(tokens[6], Token::Ident("ab123"));
+        assert_eq!(tokens[0].ident(), Some("andy"));
+        assert_eq!(tokens[1].ident(), Some("formless"));
+        assert_eq!(tokens[2].ident(), Some("fo"));
+        assert_eq!(tokens[3].ident(), Some("_"));
+        assert_eq!(tokens[4].ident(), Some("_123"));
+        assert_eq!(tokens[5].ident(), Some("_abc"));
+        assert_eq!(tokens[6].ident(), Some("ab123"));
         assert_eq!(
-            tokens[7],
-            Token::Ident("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890_")
+            tokens[7].ident(),
+            Some("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890_")
         );
     }
 
@@ -434,9 +533,9 @@ mod test {
         );
 
         assert_eq!(tokens.len(), 4);
-        assert_eq!(tokens[0], Token::Ident("space"));
-        assert_eq!(tokens[1], Token::Ident("tabs"));
-        assert_eq!(tokens[2], Token::Ident("newlines"));
-        assert_eq!(tokens[3], Token::Ident("end"));
+        assert_eq!(tokens[0].ident(), Some("space"));
+        assert_eq!(tokens[1].ident(), Some("tabs"));
+        assert_eq!(tokens[2].ident(), Some("newlines"));
+        assert_eq!(tokens[3].ident(), Some("end"));
     }
 }

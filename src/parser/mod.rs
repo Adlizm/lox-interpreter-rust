@@ -2,7 +2,7 @@ use thiserror::Error;
 
 use crate::{
     LoxError, LoxErrorKind, Result,
-    lexer::{Lexer, Token},
+    lexer::{Lexer, Token, TokenKind},
 };
 
 mod expression;
@@ -14,7 +14,10 @@ pub enum ParserError {
     UnxpectedEof,
 
     #[error("Unexpected token: {0}")]
-    UnexpectedToken(String),
+    UnexpectedToken(TokenKind),
+
+    #[error("Expected for token ( {0} ) but found a ( {1} )")]
+    ExpectTokenButNotFound(TokenKind, TokenKind),
 }
 
 pub struct Parser<'a> {
@@ -22,14 +25,16 @@ pub struct Parser<'a> {
     peek: Option<Token<'a>>,
 }
 pub trait Parse<'a>: Sized + 'a {
-    fn parse_within(parser: &mut Parser<'a>, pos: usize) -> Result<'a, Self>;
+    type State: Default + Copy;
+
+    fn parse_within(parser: &mut Parser<'a>, state: Self::State) -> Result<'a, Self>;
 
     fn parse_str(source: &'a str) -> Result<'a, Self> {
         let mut parser = Parser::new(source);
-        let ast = Self::parse_within(&mut parser, 0)?;
+        let ast = Self::parse_within(&mut parser, Self::State::default())?;
 
         if let Some(token) = parser.peek()? {
-            let token = ParserError::UnexpectedToken(format!("{token}"));
+            let token = ParserError::UnexpectedToken(token.kind());
             return Err(parser.with_error(token));
         }
 
@@ -37,7 +42,7 @@ pub trait Parse<'a>: Sized + 'a {
     }
 
     fn parse(parser: &mut Parser<'a>) -> Result<'a, Self> {
-        Self::parse_within(parser, 0)
+        Self::parse_within(parser, Self::State::default())
     }
 }
 
@@ -65,6 +70,19 @@ impl<'a> Parser<'a> {
             Some(token) => Ok(Some(token)),
             None => self.lexer.next().transpose(),
         }
+    }
+
+    pub fn expect(&mut self, kind: TokenKind) -> Result<'a, Token<'a>> {
+        let token = self
+            .next()?
+            .ok_or_else(|| self.with_error(ParserError::UnxpectedEof))?;
+
+        if token.kind() != kind {
+            let err = ParserError::UnexpectedToken(token.kind());
+            return Err(self.with_error(err));
+        }
+
+        Ok(token)
     }
 
     #[inline]
