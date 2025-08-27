@@ -4,11 +4,11 @@ use super::LoxError;
 
 #[derive(Error, Debug)]
 pub enum LexerError {
-    #[error("Unxpected EOF")]
-    UnxpectedEof,
-
     #[error("Unexpected character: {0}")]
     UnxpectedChar(char),
+
+    #[error("String not terminated, character '\"' not found")]
+    UnterminatedString,
 }
 
 pub struct Lexer<'a> {
@@ -160,11 +160,24 @@ impl<'a> Iterator for Lexer<'a> {
                 '}' => return Some(Ok(Token::RightBrace)),
                 ';' => return Some(Ok(Token::Semicolon)),
                 ',' => return Some(Ok(Token::Comma)),
+                '.' => return Some(Ok(Token::Dot)),
                 '+' => return Some(Ok(Token::Plus)),
                 '-' => return Some(Ok(Token::Minus)),
                 '*' => return Some(Ok(Token::Star)),
-                '/' => return Some(Ok(Token::Slash)),
-                '.' => return Some(Ok(Token::Dot)),
+                '/' => {
+                    if let Some('/') = chars_iter.next() {
+                        // comments
+                        let _ = chars_iter.find(|c| *c == '\n');
+                        self.rest = chars_iter.as_str();
+                        self.col = 0;
+                        self.line += 1;
+                        self.bytes += rest_with_c.len() - self.rest.len() - 1;
+
+                        continue;
+                    } else {
+                        return Some(Ok(Token::Slash));
+                    }
+                }
                 '!' | '=' | '<' | '>' => {
                     let (no, yes) = match c {
                         '!' => (Token::Bang, Token::BangEqual),
@@ -182,6 +195,34 @@ impl<'a> Iterator for Lexer<'a> {
                         return Some(Ok(no));
                     }
                 }
+
+                // strings
+                '"' => {
+                    let string = loop {
+                        if let Some(c) = chars_iter.next() {
+                            self.bytes += c.len_utf8();
+                            match c {
+                                '\n' => {
+                                    self.line += 1;
+                                    self.col = 0;
+                                }
+                                '"' => {
+                                    self.col += 1;
+                                    self.rest = chars_iter.as_str();
+
+                                    let len = rest_with_c.len() - self.rest.len();
+                                    break &rest_with_c[1..len - 1];
+                                }
+                                _ => self.col += 1,
+                            }
+                        } else {
+                            return Some(Err(self.with_error(LexerError::UnterminatedString)));
+                        }
+                    };
+                    return Some(Ok(Token::String(string)));
+                }
+
+                // numbers
                 '0'..='9' => {
                     let mut len = 1;
                     let find = loop {
@@ -222,6 +263,8 @@ impl<'a> Iterator for Lexer<'a> {
 
                     return Some(Ok(Token::Number(number)));
                 }
+
+                // indentifiers and reserved words
                 '_' | 'a'..='z' | 'A'..='Z' => {
                     let literal = match chars_iter
                         .find(|c| !matches!(c, '_' | 'a'..='z' | 'A'..='Z' | '0'..='9'))
@@ -259,6 +302,8 @@ impl<'a> Iterator for Lexer<'a> {
                     };
                     return Some(Ok(token));
                 }
+
+                // ignoring spaces
                 c if c.is_whitespace() => {
                     if c == '\n' {
                         self.line += 1;
@@ -266,6 +311,7 @@ impl<'a> Iterator for Lexer<'a> {
                     }
                     continue;
                 }
+
                 c => return Some(Err(self.with_error(LexerError::UnxpectedChar(c)))),
             }
         }
