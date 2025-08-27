@@ -1,6 +1,9 @@
 use thiserror::Error;
 
 pub mod lexer;
+pub mod parser;
+
+pub type Result<'a, T> = std::result::Result<T, LoxError<'a>>;
 
 #[derive(Debug)]
 pub struct LoxError<'a> {
@@ -27,7 +30,10 @@ impl<'a> std::fmt::Display for LoxError<'a> {
 }
 
 #[derive(Debug, Error)]
-enum LoxErrorKind {
+pub enum LoxErrorKind {
     #[error(transparent)]
     Lexer(#[from] lexer::LexerError),
+
+    #[error(transparent)]
+    Parser(#[from] parser::ParserError),
 }

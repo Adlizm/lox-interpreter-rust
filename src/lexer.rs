@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use super::LoxError;
+use super::{LoxError, LoxErrorKind};
 
 #[derive(Error, Debug)]
 pub enum LexerError {
@@ -21,7 +21,7 @@ pub struct Lexer<'a> {
 }
 
 impl<'a> Lexer<'a> {
-    pub fn with_error(&self, error: LexerError) -> LoxError<'a> {
+    pub fn with_error(&self, error: impl Into<LoxErrorKind>) -> LoxError<'a> {
         LoxError {
             line_source: self
                 .source
